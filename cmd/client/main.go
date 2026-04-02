@@ -26,15 +26,35 @@ func main() {
 		log.Printf("could not get username: %v", err)
 	}
 
-	pubsub.DeclareAndBind(
+	publishCh, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("could not create channel: %v", err)
+	}
+
+	gamestate := gamelogic.NewGameState(userName)
+	err = pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilDirect,
 		routing.PauseKey+"."+userName,
 		routing.PauseKey,
 		pubsub.SimpleQueueType(pubsub.Transient),
+		handlerPause(gamestate),
 	)
+	if err != nil {
+		log.Printf("error with pause publish: %s", err)
+	}
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.ArmyMovesPrefix+"."+userName,
+		routing.ArmyMovesPrefix+".*",
+		pubsub.SimpleQueueType(pubsub.Transient),
+		handlerMove(gamestate),
+	)
+	if err != nil {
+		log.Printf("error with move publish: %s", err)
+	}
 
-	gamestate := gamelogic.NewGameState(userName)
 REPL:
 	for {
 		words := gamelogic.GetInput()
@@ -54,6 +74,12 @@ REPL:
 				fmt.Println(err)
 				continue
 			}
+			err = pubsub.PublishJSON(publishCh, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+userName, move)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Println("Move message published successfully!")
 			fmt.Printf("Player: %s moving units to %s\n", move.Player.Username, move.ToLocation)
 		case "status":
 			gamestate.CommandStatus()
@@ -69,4 +95,18 @@ REPL:
 		}
 	}
 	fmt.Println("Shutting down Peril client...")
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	return func(handlePause routing.PlayingState) {
+		defer fmt.Print("> ")
+		gs.HandlePause(handlePause)
+	}
+}
+
+func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
+	return func(move gamelogic.ArmyMove) {
+		defer fmt.Print("> ")
+		gs.HandleMove(move)
+	}
 }
