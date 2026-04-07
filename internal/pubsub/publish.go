@@ -11,8 +11,16 @@ import (
 type SimpleQueueType int
 
 const (
-	Durable = iota
+	Durable SimpleQueueType = iota
 	Transient
+)
+
+type AckType int
+
+const (
+	Ack AckType = iota
+	NackRequeue
+	NackDiscard
 )
 
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
@@ -28,7 +36,7 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	return ch.PublishWithContext(ctx, exchange, key, false, false, msg)
 }
 
-func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, queueType SimpleQueueType, handler func(T)) error {
+func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, queueType SimpleQueueType, handler func(T) AckType) error {
 	channel, _, err := DeclareAndBind(
 		conn,
 		exchange,
@@ -51,8 +59,18 @@ func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string
 			if err != nil {
 				continue
 			}
-			handler(data)
-			message.Ack(false)
+			switch handler(data) {
+			case Ack:
+				message.Ack(false)
+				fmt.Println("Ack")
+			case NackDiscard:
+				message.Nack(false, false)
+				fmt.Println("NackDiscard")
+			case NackRequeue:
+				message.Nack(false, true)
+				fmt.Println("NackRequeue")
+			}
+
 		}
 	}()
 	return nil
