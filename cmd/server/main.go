@@ -26,8 +26,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not create channel: %v", err)
 	}
-	defer channel.Close()
-	fmt.Println("Channel created successfully!")
 
 	_, _, err = pubsub.DeclareAndBind(
 		conn,

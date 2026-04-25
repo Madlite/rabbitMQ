@@ -81,7 +81,6 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, queu
 	if err != nil {
 		return nil, amqp.Queue{}, err
 	}
-	fmt.Println("Channel created successfully!")
 
 	queue, err := channel.QueueDeclare(
 		queueName,
@@ -89,7 +88,7 @@ func DeclareAndBind(conn *amqp.Connection, exchange, queueName, key string, queu
 		queueType != Durable,
 		queueType != Durable,
 		false,
-		nil,
+		amqp.Table{"x-dead-letter-exchange": "peril_dlx"},
 	)
 	if err != nil {
 		return nil, amqp.Queue{}, err
