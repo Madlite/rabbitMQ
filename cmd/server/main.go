@@ -27,12 +27,13 @@ func main() {
 		log.Fatalf("could not create channel: %v", err)
 	}
 
-	_, _, err = pubsub.DeclareAndBind(
+	err = pubsub.SubscribeGob(
 		conn,
 		routing.ExchangePerilTopic,
 		routing.GameLogSlug,
-		routing.GameLogSlug+".*",
+		routing.GameLogSlug+".#",
 		pubsub.SimpleQueueType(pubsub.Durable),
+		handlerLogs(),
 	)
 	if err != nil {
 		log.Printf("error with topic: %s", err)
@@ -69,4 +70,15 @@ REPL:
 	}
 
 	fmt.Println("Shuting down Peril server")
+}
+
+func handlerLogs() func(routing.GameLog) pubsub.AckType {
+	return func(gl routing.GameLog) pubsub.AckType {
+		defer fmt.Print("> ")
+		err := gamelogic.WriteLog(gl)
+		if err != nil {
+			return pubsub.NackDiscard
+		}
+		return pubsub.Ack
+	}
 }

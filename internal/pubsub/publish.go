@@ -116,3 +116,47 @@ func PublishGob[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	ctx := context.Background()
 	return ch.PublishWithContext(ctx, exchange, key, false, false, msg)
 }
+
+func SubscribeGob[T any](conn *amqp.Connection, exchange, queueName, key string, queueType SimpleQueueType, handler func(T) AckType) error {
+	channel, _, err := DeclareAndBind(
+		conn,
+		exchange,
+		queueName,
+		key,
+		queueType,
+	)
+	if err != nil {
+		return err
+	}
+	err = channel.Qos(10, 0, false)
+	if err != nil {
+		return err
+	}
+	consumeCh, err := channel.Consume(queueName, "", false, false, false, false, nil)
+	if err != nil {
+		return err
+	}
+	go func() {
+		for message := range consumeCh {
+			var data T
+			dec := gob.NewDecoder(bytes.NewBuffer(message.Body))
+			err := dec.Decode(&data)
+			if err != nil {
+				continue
+			}
+			switch handler(data) {
+			case Ack:
+				message.Ack(false)
+				fmt.Println("Ack")
+			case NackDiscard:
+				message.Nack(false, false)
+				fmt.Println("NackDiscard")
+			case NackRequeue:
+				message.Nack(false, true)
+				fmt.Println("NackRequeue")
+			}
+
+		}
+	}()
+	return nil
+}
